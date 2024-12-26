@@ -5,13 +5,12 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import (accuracy_score, classification_report, confusion_matrix,
-                             roc_curve, auc)
+from sklearn.metrics import (accuracy_score, classification_report, confusion_matrix,roc_curve, auc)
 from sklearn.preprocessing import LabelEncoder
+from tabulate import tabulate
 import seaborn as sns
 import matplotlib.pyplot as plt
-import joblib
-import streamlit as st
+import joblib  # For saving models
 
 # Initialize database and load CSV
 def initialize_database():
@@ -59,6 +58,7 @@ def initialize_database():
 
     con.commit()
     con.close()
+    print("Database initialized and CSV data imported successfully!")
 
 # Retrieve Data from DB to DataFrame for EDA
 def load_data_to_df():
@@ -67,20 +67,25 @@ def load_data_to_df():
     con.close()
     return df
 
+# Pretty-print DataFrame as a table
+def print_pretty_table(df):
+    print("\n" + tabulate(df, headers='keys', tablefmt='fancy_grid', showindex=False))
+
 # EDA & Data Preprocessing
 def perform_eda_and_preprocessing(df):
-    st.subheader("EDA & Data Preprocessing")
+    print("\n--- EDA & Data Preprocessing ---")
 
     # Checking for missing values
-    st.write("Missing Values:")
-    st.write(df.isnull().sum())
+    print("\nMissing Values:")
+    print(df.isnull().sum())
 
     # Dropping duplicate rows
+    print("\nDropping duplicates...")
     df = df.drop_duplicates()
 
     # Encoding categorical variables
     label_encoder = LabelEncoder()
-    categorical_columns = ['Age', 'Accessibility', 'EducationLevel', 'Gender', 'MentalHealth', 'MainBranch', 'Country']
+    categorical_columns = ['Age','Accessibility','EducationLevel', 'Gender', 'MentalHealth', 'MainBranch', 'Country']
 
     for col in categorical_columns:
         df[col] = label_encoder.fit_transform(df[col].astype(str))
@@ -90,47 +95,49 @@ def perform_eda_and_preprocessing(df):
         Q1 = data[column_name].quantile(0.25)
         Q3 = data[column_name].quantile(0.75)
         IQR = Q3 - Q1
-        return data[(data[column_name] >= Q1 - 1.5 * IQR) & (data[column_name] <= Q3 + 1.5 * IQR)]
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+        return data[(data[column_name] >= lower_bound) & (data[column_name] <= upper_bound)]
 
     # Remove outliers
     for col in ['YearsOfCoding', 'PreviousSalary', 'ComputerSkills']:
         df = remove_outliers_iqr(df, col)
 
     # Feature and target selection
-    X = df[['Age', 'Accessibility', 'ComputerSkills', 'PreviousSalary']]
+    X = df[['Age','Accessibility', 'ComputerSkills', 'PreviousSalary']]
     y = df['Employed']
 
     # Splitting the data
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    st.success("EDA and Preprocessing complete.")
+    print("\nEDA and Preprocessing complete.")
     return X_train, X_test, y_train, y_test
 
 # Train the selected model and print results
 def train_model(model_name, X_train, X_test, y_train, y_test):
-    st.subheader(f"Training {model_name}")
+    print(f"\n--- Training {model_name} ---")
 
     if model_name == "Logistic Regression":
         model = LogisticRegression(random_state=0)
     elif model_name == "Decision Tree":
-        model = DecisionTreeClassifier(random_state=42)
+        model = DecisionTreeClassifier(random_state =42)
     elif model_name == "Random Forest":
         model = RandomForestClassifier(random_state=42)
     else:
-        st.error("Invalid model name.")
+        print("Invalid model name.")
         return None
 
     model.fit(X_train, y_train)
-    y_pred = model .predict(X_test)
+    y_pred = model.predict(X_test)
 
     # Evaluate the model
     accuracy = accuracy_score(y_test, y_pred)
     class_report = classification_report(y_test, y_pred)
 
-    st.write(f'**{model_name} Results:**')
-    st.write(f'Accuracy: {accuracy:.4f}')
-    st.write('Classification Report:')
-    st.text(class_report)
+    print(f'\n{model_name} Results:')
+    print(f'Accuracy: {accuracy:.4f}')
+    print('Classification Report:')
+    print(class_report)
 
     # Save the model
     joblib.dump(model, f"{model_name.replace(' ', '_')}.joblib")
@@ -142,13 +149,13 @@ def train_model(model_name, X_train, X_test, y_train, y_test):
     plt.xlabel('Predicted')
     plt.ylabel('Actual')
     plt.title(f'{model_name} - Confusion Matrix')
-    st.pyplot(plt)
+    plt.show()
 
     # Calculate the AUC
     y_scores = model.predict_proba(X_test)[:, 1]
     fpr, tpr, _ = roc_curve(y_test, y_scores)
     auc_score = auc(fpr, tpr)
-    st.write(f'{model_name} - AUC: {auc_score:.4f}')
+    print(f'{model_name} - AUC: {auc_score:.4f}')
 
     # Plot the ROC curve
     plt.figure()
@@ -160,15 +167,20 @@ def train_model(model_name, X_train, X_test, y_train, y_test):
     plt.ylabel('True Positive Rate')
     plt.title(f'{model_name} - ROC Curve')
     plt.legend(loc='lower right')
-    st.pyplot(plt)
+    plt.show()
 
     return model
 
 # Train the models based on user selection
 def train_models_and_get_models(X_train, X_test, y_train, y_test):
-    st.subheader("Select Models to Train")
+    print("\n--- Select Models to Train ---")
+    models_to_train = []
     available_models = ["Logistic Regression", "Decision Tree", "Random Forest"]
-    models_to_train = st.multiselect("Select models to train:", available_models)
+
+    for model_name in available_models:
+        choice = input(f"Do you want to train {model_name}? (yes/no): ").strip().lower()
+        if choice == 'yes':
+            models_to_train.append(model_name)
 
     trained_models = {}
     for model_name in models_to_train:
@@ -176,42 +188,43 @@ def train_models_and_get_models(X_train, X_test, y_train, y_test):
 
     return trained_models
 
-# AI-Powered HR Mode
-def ai_powered_hr_mode():
-    st.subheader("AI-Powered HR Mode")
-    df = load_data_to_df()
-    X_train, X_test, y_train, y_test = perform_eda_and_preprocessing(df)
-    models = train_models_and_get_models(X_train, X_test, y_train, y_test)
-
-    if st.button("Back to Home"):
-        st.session_state.page = "home"
-
-    if models:
-        model_name = st.selectbox("Select a model for predictions", list(models.keys()))
+# AI-Powered HR Mode: Model selection and prediction
+def ai_hr_mode(models):
+    print("\n--- AI-Powered HR Mode ---")
+    while True:
+        print("Available Trained Models:")
+        for i, model_name in enumerate(models.keys(), start=1):
+            print(f"{i}. {model_name}")
+        choice = int(input("Select a model by number (or 0 to go back): "))
+        if choice == 0:
+            break
+        model_name = list(models.keys())[choice - 1]
         model = models[model_name]
-        st.write(f"Using {model_name} for predictions")
+        print(f"Using {model_name} for predictions")
 
         # Get input for prediction
-        age = st.number_input("Age", min_value=0)
-        accessibility = st.selectbox("Accessibility (1 or 0)", [0, 1])
-        computer_skills = st.number_input("Number of Computer Skills", min_value=0)
-        previous_salary = st.number_input("Previous Salary", min_value=0.0)
+        age = int(input("Age: "))
+        accessibility = int(input("Accessibility (1 or 0): "))
+        computer_skills = int(input(" Number of Computer Skills: "))
+        previous_salary = float(input("Previous Salary: "))
 
         # Predict
-        if st.button("Predict"):
-            prediction = model.predict([[age, accessibility, computer_skills, previous_salary]])[0]
-            st.write(f"Prediction Result: {'Accepted' if prediction == 1 else 'Rejected'}")
+        prediction = model.predict([[age,accessibility, computer_skills, previous_salary]])[0]
+        print(f"Prediction Result: {'Accepted' if prediction == 1 else 'Rejected'}")
 
-# Retrieve number of head rows
+        repeat = input("Do you want to make another prediction? (yes/no): ").strip().lower()
+        if repeat != 'yes':
+            break
+            
+# Manual HR Mode - Retrieve number of head rows
 def retrieve_head_rows():
     con = sqlite3.connect('HR.db')
     df = pd.read_sql_query("SELECT * FROM EmployeesRecords", con)
     con.close()
 
-    num_rows = st.number_input("Enter the number of rows you want to retrieve:", min_value=1, max_value=len(df))
-    if st.button("Retrieve"):
-        st.write(f"\nFirst {num_rows} rows from the database:")
-        st.write(df.head(num_rows))
+    num_rows = int(input("Enter the number of rows you want to retrieve: "))
+    print(f"\nFirst {num_rows} rows from the database:")
+    print_pretty_table(df.head(num_rows))  # Pretty print the head rows
 
 # Add Employee function
 def add_employee():
@@ -219,36 +232,35 @@ def add_employee():
     cur = con.cursor()
 
     # Input from user
-    age = st.number_input("Enter Age:", min_value=0)
-    accessibility = st.selectbox("Enter Accessibility (1 or 0):", [0, 1])
-    education_level = st.text_input("Enter Education Level:")
-    gender = st.text_input("Enter Gender:")
-    worked_before = st.selectbox("Worked Before (1 or 0):", [0, 1])
-    mental_health = st.text_input("Enter Mental Health (Yes or No):")
-    main_branch = st.text_input("Enter Main Branch (Dev or NotDev):")
-    years_of_coding = st.number_input("Enter Years of Coding:", min_value=0)
-    years_of_coding_while_working = st.number_input("Enter Years of Coding While Working:", min_value=0)
-    country = st.text_input("Enter Country:")
-    previous_salary = st.number_input("Enter Previous Salary:", min_value=0.0)
-    have_worked_with = st.text_input("Enter Skills Have Worked With (comma separated):")
-    computer_skills = st.number_input("Enter number of Computer Skills:", min_value=0)
-    employed = st.selectbox("Employed (1 or 0):", [0, 1])
+    age = int(input("Enter Age: "))
+    accessibility = int(input("Enter Accessibility (1 or 0): "))
+    education_level = input("Enter Education Level: ")
+    gender = input("Enter Gender: ")
+    worked_before = int(input("Worked Before (1 or 0): "))
+    mental_health = input("Enter Mental Health(Yes or No): ")
+    main_branch = input("Enter Main Branch(Dev or NotDev: ")
+    years_of_coding = int(input("Enter Years of Coding: "))
+    years_of_coding_while_working = int(input("Enter Years of Coding While Working: "))
+    country = input("Enter Country: ")
+    previous_salary = float(input("Enter Previous Salary: "))
+    have_worked_with = input("Enter Skills Have Worked With(comma seperated): ")
+    computer_skills = int(input("Enter number of Computer Skills: "))
+    employed = int(input("Employed (1 or 0): "))
 
     # Insert the new employee into the database
-    if st.button("Add Employee"):
-        cur.execute("""
-            INSERT INTO EmployeesRecords (
-                Age, Accessibility, EducationLevel, Gender, WorkedBefore, MentalHealth,
-                MainBranch, YearsOfCoding, YearsOfCodingWhileWorking, Country, PreviousSalary,
-                HaveWorkedWith, ComputerSkills, Employed
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (age, accessibility, education_level, gender, worked_before, mental_health, main_branch,
-              years_of_coding, years_of_coding_while_working, country, previous_salary, have_worked_with,
-              computer_skills, employed))
+    cur.execute("""
+        INSERT INTO EmployeesRecords (
+            Age, Accessibility, EducationLevel, Gender, WorkedBefore, MentalHealth,
+            MainBranch, YearsOfCoding, YearsOfCodingWhileWorking, Country, PreviousSalary,
+            HaveWorkedWith, ComputerSkills, Employed
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (age, accessibility, education_level, gender, worked_before, mental_health, main_branch,
+          years_of_coding, years_of_coding_while_working, country, previous_salary, have_worked_with,
+          computer_skills, employed))
 
-        con.commit()
-        con.close()
-        st.success("Employee added successfully!")
+    con.commit()
+    con.close()
+    print("Employee added successfully!")
 
 # Retrieve Employee function
 def retrieve_employee():
@@ -256,110 +268,111 @@ def retrieve_employee():
     df = pd.read_sql_query("SELECT * FROM EmployeesRecords", con)
     con.close()
 
-    emp_id = st.number_input("Enter Employee ID to retrieve:", min_value=1)
-    if st.button("Retrieve Employee"):
-        employee = df[df['ID'] == emp_id]
-        if not employee.empty:
-            st.write("Employee Details:")
-            st.write(employee)
-        else:
-            st.error("Employee not found.")
+    emp_id = int(input("Enter Employee ID to retrieve: "))
+    employee = df[df['ID'] == emp_id]
+    print("\nEmployee Details:")
+    print_pretty_table(employee)
 
 # Delete Employee function
 def delete_employee():
     con = sqlite3.connect('HR.db')
     cur = con.cursor()
 
-    emp_id = st.number_input("Enter Employee ID to delete:", min_value=1)
-    if st.button("Delete Employee"):
-        cur.execute("DELETE FROM EmployeesRecords WHERE ID=?", (emp_id,))
-        con.commit()
-        con.close()
-        st.success(f"Employee with ID {emp_id} deleted successfully!")
+    emp_id = int(input("Enter Employee ID to delete: "))
+    cur.execute("DELETE FROM EmployeesRecords WHERE ID=?", (emp_id,))
+
+    con.commit()
+    con.close()
+    print(f"Employee with ID {emp_id} deleted successfully!")
 
 # Update Employee function
 def update_employee():
     con = sqlite3.connect('HR.db')
     cur = con.cursor()
 
-    emp_id = st.number_input("Enter Employee ID to update:", min_value=1)
+    emp_id = int(input("Enter Employee ID to update: "))
 
     # Get new data for updating
-    age = st.number_input("Enter new Age:", min_value=0)
-    accessibility = st.selectbox("Enter new Accessibility (1 or 0):", [0, 1])
-    education_level = st.text_input("Enter new Education Level:")
-    gender = st.text_input("Enter new Gender:")
-    worked_before = st.selectbox("Worked Before (1 or 0):", [0, 1])
-    mental_health = st.text_input("Enter new Mental Health (Yes or No):")
-    main_branch = st.text_input("Enter new Main Branch (Dev or NotDev):")
-    years_of_coding = st.number_input("Enter new Years of Coding:", min_value=0)
-    years_of_coding_while_working = st.number_input("Enter new Years of Coding While Working:", min_value=0)
-    country = st.text_input("Enter new Country:")
-    previous_salary = st.number_input("Enter new Previous Salary:", min_value=0.0)
-    have_worked_with = st.text_input("Enter new Skills Have Worked With (comma separated):")
-    computer_skills = st.number_input("Enter new number of Computer Skills:", min_value=0)
-    employed = st.selectbox("Employed (1 or 0):", [0, 1])
+    age = int(input("Enter new Age: "))
+    accessibility = int(input("Enter new Accessibility (1 or 0): "))
+    education_level = input("Enter new Education Level: ")
+    gender = input("Enter new Gender: ")
+    worked_before = int(input("Worked Before (1 or 0): "))
+    mental_health = input("Enter new Mental Health(Yes or No): ")
+    main_branch = input("Enter new Main Branch(Dev or NotDev): ")
+    years_of_coding = int(input("Enter new Years of Coding: "))
+    years_of_coding_while_working = int(input("Enter new Years of Coding While Working: "))
+    country = input("Enter new Country: ")
+    previous_salary = float(input("Enter new Previous Salary: "))
+    have_worked_with = input("Enter new Skills Have Worked With(comma seperated): ")
+    computer_skills = int(input("Enter new number Computer Skills: "))
+    employed = int(input("Employed (1 or 0): "))
 
     # Update the employee record in the database
-    if st.button("Update Employee"):
-        cur.execute("""
-            UPDATE EmployeesRecords
-            SET Age=?, Accessibility=?, EducationLevel=?, Gender=?, WorkedBefore=?, MentalHealth=?,
-                MainBranch=?, YearsOfCoding=?, YearsOfCodingWhileWorking=?, Country=?, PreviousSalary=?,
-                HaveWorkedWith=?, ComputerSkills=?, Employed=?
-            WHERE ID=?
-        """, (age, accessibility, education_level, gender, worked_before, mental_health, main_branch,
-              years_of_coding, years_of_coding_while_working, country, previous_salary, have_worked_with,
-              computer_skills, employed, emp_id))
+    cur.execute("""
+        UPDATE EmployeesRecords
+        SET Age=?, Accessibility=?, EducationLevel=?, Gender=?, WorkedBefore=?, MentalHealth=?,
+            MainBranch=?, YearsOfCoding=?, YearsOfCodingWhileWorking=?, Country=?, PreviousSalary=?,
+            HaveWorkedWith=?, ComputerSkills=?, Employed=?
+        WHERE ID=?
+    """, (age, accessibility, education_level, gender, worked_before, mental_health, main_branch,
+          years_of_coding, years_of_coding_while_working, country, previous_salary, have_worked_with,
+          computer_skills, employed, emp_id))
 
-        con.commit()
-        con.close()
-        st .success(f"Employee with ID {emp_id} updated successfully!")
+    con.commit()
+    con.close()
+    print(f"Employee with ID {emp_id} updated successfully!")
 
 # Manual HR Mode
 def manual_hr_mode():
-    st.subheader("Manual HR Mode")
-    option = st.selectbox("Choose an action:", ["Add Employee", "Retrieve Employee", "Delete Employee", "Update Employee", "Retrieve Head Rows from DB", "Back to Home"])
+    while True:
+        print("\nManual HR Mode")
+        print("1. Add Employee")
+        print("2. Retrieve Employee")
+        print("3. Delete Employee")
+        print("4. Update Employee")
+        print("5. Retrieve Head Rows from DB")
+        print("6. Go Back")
 
-    if option == "Add Employee":
-        add_employee()
-    elif option == "Retrieve Employee":
-        retrieve_employee()
-    elif option == "Delete Employee":
-        delete_employee()
-    elif option == "Update Employee":
-        update_employee()
-    elif option == "Retrieve Head Rows from DB":
-        retrieve_head_rows()
-    elif option == "Back to Home":
-        st.session_state.page = "home"
+        choice = int(input("Enter your choice: "))
+
+        if choice == 1:
+            add_employee()
+        elif choice == 2:
+            retrieve_employee()
+        elif choice == 3:
+            delete_employee()
+        elif choice == 4:
+            update_employee()
+        elif choice == 5:
+            retrieve_head_rows()
+        elif choice == 6:
+            break
+        else:
+            print("Invalid choice. Please try again.")
 
 # Main Menu
 def main_menu():
-    st.title("HR Management System")
-    if "initialized" not in st.session_state:
-        initialize_database()
-        st.session_state.initialized = True
+    while True:
+        print("\n1. Manual HR Mode")
+        print("2. AI-Powered HR Mode")
+        print("3. Exit")
+        choice = int(input("Enter your choice: "))
 
-    if "page" not in st.session_state:
-        st.session_state.page = "home"
-
-    if st.session_state.page == "home":
-        if st.session_state.initialized:
-            st.success("Database initialized and CSV data imported successfully!")
-            st.session_state.initialized = False  # Ensure it only shows once
-        if st.button("Manual HR Mode"):
-            st.session_state.page = "manual_hr_mode"
-        if st.button("AI-Powered HR Mode"):
-            st.session_state.page = "ai_powered_hr_mode"
-        if st.button("Exit"):
-            st.stop()
-
-    elif st.session_state.page == "manual_hr_mode":
-        manual_hr_mode()
-
-    elif st.session_state.page == "ai_powered_hr_mode":
-        ai_powered_hr_mode()
+        if choice == 1:
+            manual_hr_mode()
+        elif choice == 2:
+            df = load_data_to_df()
+            X_train, X_test, y_train, y_test = perform_eda_and_preprocessing(df)
+            models = train_models_and_get_models(X_train, X_test, y_train, y_test)
+            ai_hr_mode(models)
+        elif choice == 3:
+            break
+        else:
+            print("Invalid choice. Please try again.")
 
 if __name__ == "__main__":
+    # Initialize database and load data
+    initialize_database()
+    # Main Menu
     main_menu()
